@@ -15,11 +15,13 @@ from PIL import Image, ImageTk
 WIDTH = 800
 HEIGHT = 600
 
+
 def scale_matrix(sx, sy):
-  return tf.constant([[1/sx, 0, 0], [0, 1/sy, 0], [0, 0, 1]])
+    return tf.constant([[1 / sx, 0, 0], [0, 1 / sy, 0], [0, 0, 1]])
+
 
 def translation_matrix(dx, dy):
-  return tf.constant([[1, 0, -dx], [0, 1, -dy], [0, 0, 1]])
+    return tf.constant([[1, 0, -dx], [0, 1, -dy], [0, 0, 1]])
 
 
 # class AutoScrollbar(ttk.Scrollbar):
@@ -39,78 +41,145 @@ def translation_matrix(dx, dy):
 #         raise tk.TclError('Cannot use place with this widget')
 
 
-def worker(model, q):
+class Collapser:
+    def __init__(self, q):
+        self.q = q
+
+    def get(self):
+        req, *args = self.q.get()
+        while q.qsize() and req == "render":
+            req, *args = self.q.get()
+        return req, *args
+
+
+def worker(q):
+    model = tf.saved_model.load("tri.dgf")
+
     while True:
-        req = q.get()
+        req, *args = q.get()
+        if req == "load_model":
+            model = tf.saved_model.load("tri.dgf")
+        elif req == "render":
 
-        while q.qsize():
-            print("SKIP")
-            req = q.get()
-        transform, tx,ty,a,b, movement, c1s, c1e, cb = req
+            transform, tx, ty, a, b, movement, c1s, c1e, cb = args
 
-        start = datetime.datetime.now()
-        print("Make inputs")
-        X = tf.stack(tf.meshgrid(tf.linspace(0., 1, WIDTH), tf.linspace(0., 0.75, HEIGHT), indexing='ij'), axis=-1)
-        X = X[:, :, tf.newaxis, :]
-        X = tf.concat([X, tf.ones_like(X[..., 0:1])], -1)
-        X = transform @ tf.expand_dims(X, -1)
-        X = tf.squeeze(X, -1)
+            start = datetime.datetime.now()
+            print("Make inputs")
+            X = tf.stack(
+                tf.meshgrid(
+                    tf.linspace(0.0, 1, WIDTH),
+                    tf.linspace(0.0, 0.75, HEIGHT),
+                    indexing="ij",
+                ),
+                axis=-1,
+            )
+            X = X[:, :, tf.newaxis, :]
+            X = tf.concat([X, tf.ones_like(X[..., 0:1])], -1)
+            X = transform @ tf.expand_dims(X, -1)
+            X = tf.squeeze(X, -1)
 
-        T = tf.constant([0], tf.float32)
-        T = T[tf.newaxis, tf.newaxis, :]
+            T = tf.constant([0], tf.float32)
+            T = T[tf.newaxis, tf.newaxis, :]
 
-        print("Make call render")
-        img = model.render(X, tf.constant([tx], tf.float32), 
-                           tf.constant([ty],tf.float32), 
-                           tf.constant([a],tf.float32), 
-                           tf.constant([b],tf.float32), 
-                           tf.constant([movement],tf.float32),
-                           tf.constant(c1s,tf.float32),
-                           tf.constant(c1e,tf.float32),
-                           )[:, :, 0, :]
-        img = tf.transpose(tf.cast(255*img, tf.uint8), (1, 0, 2))
-        print("Done: ", datetime.datetime.now() - start)
-        cb(img)
-
+            print("Make call render")
+            img = model.render(
+                X,
+                tf.constant([tx], tf.float32),
+                tf.constant([ty], tf.float32),
+                tf.constant([a], tf.float32),
+                tf.constant([b], tf.float32),
+                tf.constant([movement], tf.float32),
+                tf.constant(c1s, tf.float32),
+            )[:, :, 0, :]
+            img = tf.transpose(tf.cast(255 * img, tf.uint8), (1, 0, 2))
+            print("Done: ", datetime.datetime.now() - start)
+            cb(img)
 
 
 class Zoom_Advanced(tk.Frame):
-    ''' Advanced zoom of the image '''
-    def __init__(self, mainframe, model : queue.Queue):
-        ''' Initialize the main Frame '''
+    """Advanced zoom of the image"""
+
+    def __init__(self, mainframe, model: queue.Queue):
+        """Initialize the main Frame"""
         tk.Frame.__init__(self, master=mainframe, width=WIDTH, height=HEIGHT)
-        self.master.title('Zoom with mouse wheel')
+        self.master.title("Zoom with mouse wheel")
         self.model = model
 
         self.master.columnconfigure(0, minsize=WIDTH)
         self.master.columnconfigure(1, weight=1)
         self.master.rowconfigure(0, minsize=HEIGHT)
 
-        self.settings = tk.Frame(self.master, background='blue')
-        self.settings.grid(row=0,column=1, sticky='NSEW')
+        self.settings = tk.Frame(self.master, background="blue")
+        self.settings.grid(row=0, column=1, sticky="NSEW")
 
-        self.tx = tk.Scale(self.settings, from_=0, to=2, resolution=0.05, command=lambda e: self.request_image())
+        self.reload = tk.Button(
+            self.settings, text="Reload", command=self.request_reload
+        )
+        self.reload.pack()
+
+        self.tx = tk.Scale(
+            self.settings,
+            from_=0,
+            to=2,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
         self.tx.set(1)
         self.tx.pack()
-        self.ty= tk.Scale(self.settings, from_=0, to=2, resolution=0.05, command=lambda e: self.request_image())
+        self.ty = tk.Scale(
+            self.settings,
+            from_=0,
+            to=2,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
         self.ty.set(1)
         self.ty.pack()
-        self.a= tk.Scale(self.settings, from_=0, to=2, resolution=0.05, command=lambda e: self.request_image())
+        self.a = tk.Scale(
+            self.settings,
+            from_=0,
+            to=2,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
         self.a.set(1)
         self.a.pack()
-        self.b= tk.Scale(self.settings, from_=0, to=2, resolution=0.05, command=lambda e: self.request_image())
+        self.b = tk.Scale(
+            self.settings,
+            from_=0,
+            to=2,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
         self.b.set(1)
         self.b.pack()
-        self.movement= tk.Scale(self.settings, from_=0, to=1, resolution=0.05, command=lambda e: self.request_image())
+        self.movement = tk.Scale(
+            self.settings,
+            from_=0,
+            to=1,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
         self.movement.pack()
-        self.circle1start= tk.Scale(self.settings, from_=0, to=1, resolution=0.05, command=lambda e: self.request_image())
+        self.circle1start = tk.Scale(
+            self.settings,
+            from_=0,
+            to=1,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
         self.circle1start.pack()
-        self.circle1end= tk.Scale(self.settings, from_=0, to=1, resolution=0.05, command=lambda e: self.request_image())
+        self.circle1end = tk.Scale(
+            self.settings,
+            from_=0,
+            to=1,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
         self.circle1end.pack()
 
-
         self.inbox = queue.Queue()
-        
+
         # # Vertical and horizontal scrollbars for canvas
         # vbar = AutoScrollbar(self.master, orient='vertical')
         # hbar = AutoScrollbar(self.master, orient='horizontal')
@@ -120,16 +189,15 @@ class Zoom_Advanced(tk.Frame):
         # self.canvas = tk.Canvas(self.master, highlightthickness=0,
         #                         xscrollcommand=hbar.set, yscrollcommand=vbar.set)
 
-        self.canvas = tk.Label(self.master, text= "Loading")
+        self.canvas = tk.Label(self.master, text="Loading")
         # self.canvas = tk.Canvas(self.master, highlightthickness=0, width=WIDTH, height=HEIGHT)
         self.canvas.grid(row=0, column=0)
         # self.canvas.update()  # wait till canvas is created
 
-        self.label = tk.Label(self.master, text= "Hello!")
+        self.label = tk.Label(self.master, text="Hello!")
         self.label.grid(row=1, column=0)
 
         self.transform = tf.eye(3, dtype=tf.float32)
-
 
         # vbar.configure(command=self.scroll_y)  # bind scrollbars to the canvas
         # hbar.configure(command=self.scroll_x)
@@ -138,13 +206,13 @@ class Zoom_Advanced(tk.Frame):
         # self.master.columnconfigure(0, weight=1)
         # # Bind events to the Canvas
         # self.canvas.bind('<Configure>', self.show_image)  # canvas is resized
-        self.canvas.bind('<ButtonPress-1>', self.move_from)
-        self.canvas.bind('<B1-Motion>',     self.move_to)
+        self.canvas.bind("<ButtonPress-1>", self.move_from)
+        self.canvas.bind("<B1-Motion>", self.move_to)
         # self.canvas.bind('<MouseWheel>', self.wheel)  # with Windows and MacOS, but not Linux
-        self.canvas.bind('<Button-5>',   self.wheel)  # only with Linux, wheel scroll down
-        self.canvas.bind('<Button-4>',   self.wheel)  # only with Linux, wheel scroll up
+        self.canvas.bind("<Button-5>", self.wheel)  # only with Linux, wheel scroll down
+        self.canvas.bind("<Button-4>", self.wheel)  # only with Linux, wheel scroll up
         # self.image = IM  # open image
-        self.width, self.height = WIDTH, HEIGHT #self.image.size
+        self.width, self.height = WIDTH, HEIGHT  # self.image.size
         # self.imscale = 1.0  # scale for the canvaas image
         # self.delta = 1.3  # zoom magnitude
         # # Put image into container rectangle and use it to set proper coordinates to the image
@@ -158,45 +226,51 @@ class Zoom_Advanced(tk.Frame):
         #     y1 = y0 + random.randint(minsize, maxsize)
         #     color = ('red', 'orange', 'yellow', 'green', 'blue')[random.randint(0, 4)]
         #     self.canvas.create_rectangle(x0, y0, x1, y1, fill=color, activefill='black')
-        self.request_image()
+        self.request_reload()
         self.check_queue()
 
+    def request_reload(self):
+        self.model.put(("load_model",))
+        self.request_image()
+
     def scroll_y(self, *args, **kwargs):
-        ''' Scroll canvas vertically and redraw the image '''
+        """Scroll canvas vertically and redraw the image"""
         self.canvas.yview(*args, **kwargs)  # scroll vertically
         self.show_image()  # redraw the image
 
     def scroll_x(self, *args, **kwargs):
-        ''' Scroll canvas horizontally and redraw the image '''
+        """Scroll canvas horizontally and redraw the image"""
         print("SX ", args, kwargs)
         self.canvas.xview(*args, **kwargs)  # scroll horizontally
         self.show_image()  # redraw the image
 
     def move_from(self, event):
-        ''' Remember previous coordinates for scrolling with the mouse '''
+        """Remember previous coordinates for scrolling with the mouse"""
         self.prev_x = event.x
         self.prev_y = event.y
 
     def move_to(self, event):
-        ''' Drag (move) canvas to the new position '''
-        self.transform @= translation_matrix((event.x - self.prev_x) / WIDTH, (event.y - self.prev_y)/ HEIGHT)
+        """Drag (move) canvas to the new position"""
+        self.transform @= translation_matrix(
+            (event.x - self.prev_x) / WIDTH, (event.y - self.prev_y) / HEIGHT
+        )
         self.prev_x = event.x
         self.prev_y = event.y
         self.request_image()  # redraw the image
 
     def wheel(self, event):
-        ''' Zoom with mouse wheel '''
+        """Zoom with mouse wheel"""
         print(event)
 
         if event.num == 4 or event.delta == 120:  # scroll down
-            self.transform @= translation_matrix(-event.x/WIDTH, -event.y/HEIGHT)
-            self.transform @= scale_matrix(1/0.9, 1/0.9)
-            self.transform @= translation_matrix(event.x/WIDTH, event.y/HEIGHT)
+            self.transform @= translation_matrix(-event.x / WIDTH, -event.y / HEIGHT)
+            self.transform @= scale_matrix(1 / 0.9, 1 / 0.9)
+            self.transform @= translation_matrix(event.x / WIDTH, event.y / HEIGHT)
         if event.num == 5 or event.delta == -120:  # scroll up
-            self.transform @= translation_matrix(-event.x/WIDTH, -event.y/HEIGHT)
+            self.transform @= translation_matrix(-event.x / WIDTH, -event.y / HEIGHT)
             self.transform @= scale_matrix(0.9, 0.9)
-            self.transform @= translation_matrix(event.x/WIDTH, event.y/HEIGHT)
-        
+            self.transform @= translation_matrix(event.x / WIDTH, event.y / HEIGHT)
+
         # print(event)
         # x = self.canvas.canvasx(event.x)
         # y = self.canvas.canvasy(event.y)
@@ -228,15 +302,26 @@ class Zoom_Advanced(tk.Frame):
         def cb(img):
             self.inbox.put(img)
 
-        self.model.signatures
-        self.model.put((self.transform, self.tx.get(),self.ty.get(),self.a.get(),self.b.get(),self.movement.get(), 
-                        self.circle1start.get(), self.circle1end.get(), cb))
+        self.model.put(
+            (
+                "render",
+                self.transform,
+                self.tx.get(),
+                self.ty.get(),
+                self.a.get(),
+                self.b.get(),
+                self.movement.get(),
+                self.circle1start.get(),
+                self.circle1end.get(),
+                cb,
+            )
+        )
 
     def show_image(self, img):
-        ''' Show image on the Canvas '''
-        self.img = Image.fromarray(img.numpy(), mode='RGBA')
+        """Show image on the Canvas"""
+        self.img = Image.fromarray(img.numpy(), mode="RGBA")
         self.imagetk = ImageTk.PhotoImage(self.img)
-        self.canvas['image'] = self.imagetk
+        self.canvas["image"] = self.imagetk
         # imageid = self.canvas.create_image(
         #                                 anchor='nw', image=imagetk)
         # self.canvas.lower(imageid)  # set image into background
@@ -272,11 +357,12 @@ class Zoom_Advanced(tk.Frame):
         #     self.canvas.lower(imageid)  # set image into background
         #     self.canvas.imagetk = imagetk  # keep an extra reference to prevent garbage-collection
 
+
 q = queue.Queue()
+q.put(("load_model",))
 
-t = threading.Thread(target=lambda: worker(q), daemon=True)
+t = threading.Thread(target=lambda: worker(Collapser(q)), daemon=True)
 t.start()
-
 
 
 root = tk.Tk()
