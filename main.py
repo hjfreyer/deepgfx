@@ -59,6 +59,7 @@ def worker(q):
         req, *args = q.get()
         if req == "load_model":
             model = tf.saved_model.load("tri.dgf")
+            print(model.signatures['serving_default'].variables)
         elif req == "render":
 
             transform, tx, ty, a, b, movement, c1s, c1e, cb = args
@@ -81,15 +82,20 @@ def worker(q):
             T = tf.constant([0], tf.float32)
             T = T[tf.newaxis, tf.newaxis, :]
 
+
+            render_func = model.signatures['serving_default']
+            render_func.variables[0].assign(tf.constant(tx, tf.float32))
+            render_func.variables[1].assign(tf.constant(ty, tf.float32))
+            render_func.variables[2].assign(tf.constant(a, tf.float32)),
+            render_func.variables[3].assign(tf.constant(b, tf.float32)),
+            render_func.variables[4].assign(tf.constant(movement, tf.float32)),
+            render_func.variables[5].assign(tf.constant(c1s, tf.float32)),
+            render_func.variables[6].assign(tf.constant(c1e, tf.float32)),
+
+
             print("Make call render")
             img = model.render(
                 X,
-                tf.constant([tx], tf.float32),
-                tf.constant([ty], tf.float32),
-                tf.constant([a], tf.float32),
-                tf.constant([b], tf.float32),
-                tf.constant([movement], tf.float32),
-                tf.constant(c1s, tf.float32),
             )[:, :, 0, :]
             img = tf.transpose(tf.cast(255 * img, tf.uint8), (1, 0, 2))
             print("Done: ", datetime.datetime.now() - start)

@@ -88,22 +88,21 @@ def frame(r, theta, a, b, side_movement, circle1_start, c1e):
 class Drawing(tf.Module):
     def __init__(self):
         super().__init__()
-        self.c1e = tf.Variable(1.0, trainable=False)
+        self.r = tf.Variable(1.0, trainable=False, name='r')
+        self.theta = tf.Variable(1.0, trainable=False, name='theta')
+        self.a = tf.Variable(1.0, trainable=False, name='a')
+        self.b = tf.Variable(1.0, trainable=False, name='b')
+        self.movement = tf.Variable(0., trainable=False, name='b')
+        self.c1s = tf.Variable(0., trainable=False  ,name='c1s')
+        self.c1e = tf.Variable(1.0, trainable=False,name='c1e')
 
     @tf.function(
         input_signature=[
             tf.TensorSpec([None, None, None, 3], tf.float32),
-            tf.TensorSpec([None], tf.float32),
-            tf.TensorSpec([None], tf.float32),
-            tf.TensorSpec([None], tf.float32),
-            tf.TensorSpec([None], tf.float32),
-            tf.TensorSpec([None], tf.float32),
-            tf.TensorSpec([], tf.float32),
         ]
     )
-    def render(self, x, tx, ty, a, b, movement, circle1_start):
-        return frame(tx, ty, a, b, movement, circle1_start, self.c1e)(x)
-
+    def render(self, x):
+        return frame(self.r, self.theta, self.a,  self.b,  self.movement,  self.c1s, self.c1e)(x)
 
 model = Drawing()
-tf.saved_model.save(model, "tri.dgf")
+tf.saved_model.save(model, "/tmp/tri.dgf")
