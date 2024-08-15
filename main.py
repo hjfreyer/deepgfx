@@ -53,16 +53,13 @@ class Collapser:
 
 
 def worker(q):
-    model = tf.saved_model.load("tri.dgf")
-
     while True:
         req, *args = q.get()
         if req == "load_model":
-            model = tf.saved_model.load("tri.dgf")
-            print(model.signatures['serving_default'].variables)
+            model = tf.saved_model.load("/tmp/tri.dgf")
         elif req == "render":
 
-            transform, tx, ty, a, b, movement, c1s, c1e, cb = args
+            transform, tx, ty, a, b, movement, c1s, c1e, cp, cb = args
 
             start = datetime.datetime.now()
             print("Make inputs")
@@ -83,7 +80,7 @@ def worker(q):
             T = T[tf.newaxis, tf.newaxis, :]
 
 
-            render_func = model.signatures['serving_default']
+            render_func = model.render.concrete_functions[0]
             render_func.variables[0].assign(tf.constant(tx, tf.float32))
             render_func.variables[1].assign(tf.constant(ty, tf.float32))
             render_func.variables[2].assign(tf.constant(a, tf.float32)),
@@ -91,6 +88,7 @@ def worker(q):
             render_func.variables[4].assign(tf.constant(movement, tf.float32)),
             render_func.variables[5].assign(tf.constant(c1s, tf.float32)),
             render_func.variables[6].assign(tf.constant(c1e, tf.float32)),
+            render_func.variables[7].assign(tf.constant(cp, tf.float32)),
 
 
             print("Make call render")
@@ -183,6 +181,14 @@ class Zoom_Advanced(tk.Frame):
             command=lambda e: self.request_image(),
         )
         self.circle1end.pack()
+        self.cp = tk.Scale(
+            self.settings,
+            from_=0,
+            to=1,
+            resolution=0.05,
+            command=lambda e: self.request_image(),
+        )
+        self.cp.pack()
 
         self.inbox = queue.Queue()
 
@@ -319,6 +325,7 @@ class Zoom_Advanced(tk.Frame):
                 self.movement.get(),
                 self.circle1start.get(),
                 self.circle1end.get(),
+                self.cp.get(),
                 cb,
             )
         )

@@ -39,8 +39,37 @@ def sector(start, end):
         ]
     )
 
+def compose(f, g):
+    def render(x):
+        ff = f(x)
+        return g(ff)
+    return render
 
-def frame(r, theta, a, b, side_movement, circle1_start, c1e):
+
+def cart_to_polar(x):
+    return tf.stack([
+        tf.norm(x[..., 0:2], axis=-1),
+        tf.atan2(x[..., 1], x[..., 0]),
+        x[..., 2],
+    ], axis=-1)
+
+def polar_to_cart(x):
+    return tf.stack([
+        x[..., 0] * tf.cos(x[..., 1]),
+        x[..., 0] * tf.sin(x[..., 1]),
+        x[..., 2],
+    ], axis=-1)
+
+def lerp(f, g, a):
+    def render(x):
+        return f(x) * (1. - a) + g(x) * a
+    return render
+
+def identity(x):
+    return x
+
+
+def frame(r, theta, a, b, side_movement, circle1_start, c1e, cp):
     tx = r * tf.cos(theta)
     ty = r * tf.sin(theta)
 
@@ -76,13 +105,29 @@ def frame(r, theta, a, b, side_movement, circle1_start, c1e):
         opp_start + opp_pointing * tf.expand_dims(opp_len, -1),
     )
 
+    def g(x):
+        return tf.reduce_min(x % 0.1, axis=-1)
+    
+    def quadrant(x):
+        return (0. <= x[..., 1]) & (x[..., 1] <= math.pi/2) & (0. <= x[..., 0])
+    grid = lambda x: 0.3 * clip(white, threshold(g, 0.002))(x)
+    grid = clip(grid, quadrant)
     tri = clip(white, threshold(tri, 0.01))
     adj = clip(red, threshold(adj, 0.01))
     opp = clip(green, threshold(opp, 0.01))
 
     circ = intersection([circle(r), sector(circle1_start, c1e)])
+    circ = line_segment(tf.stack([r, 0.], axis=-1), tf.stack([r, math.pi], axis=-1))
 
-    return layers([black, tri, adj, opp, clip(red, threshold(circ, 0.01))])
+    # circ2 = transform(translation_matrix(a / 2, b / 2), circle(a/2+b/2))
+    def circ2(x):
+        return tf.abs( x[...,0]*(a * tf.cos(x[..., 1]) + b * tf.sin(x[..., 1]) - x[...,0]))
+    # circ2 = lambda x:tf.abs(line(tf.stack([a, b], -1), x[..., 0:2]))
+
+    draw = layers([black, grid, tri, adj, opp, clip(red, threshold(circ, 0.01)),
+                   clip(green, threshold(circ2, 0.01))
+                   ])
+    return compose(cart_to_polar, compose(lerp(identity, polar_to_cart, cp), draw))
 
 
 class Drawing(tf.Module):
@@ -95,6 +140,7 @@ class Drawing(tf.Module):
         self.movement = tf.Variable(0., trainable=False, name='b')
         self.c1s = tf.Variable(0., trainable=False  ,name='c1s')
         self.c1e = tf.Variable(1.0, trainable=False,name='c1e')
+        self.cp = tf.Variable(0., trainable=False,name='cp')
 
     @tf.function(
         input_signature=[
@@ -102,7 +148,7 @@ class Drawing(tf.Module):
         ]
     )
     def render(self, x):
-        return frame(self.r, self.theta, self.a,  self.b,  self.movement,  self.c1s, self.c1e)(x)
+        return frame(self.r, self.theta, self.a,  self.b,  self.movement,  self.c1s, self.c1e, self.cp)(x)
 
 model = Drawing()
 tf.saved_model.save(model, "/tmp/tri.dgf")

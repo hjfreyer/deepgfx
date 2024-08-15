@@ -14,7 +14,10 @@ def scale_matrix(sx, sy):
 
 
 def translation_matrix(dx, dy):
-    return tf.constant([[1, 0, -dx], [0, 1, -dy], [0, 0, 1]])
+    return tf.stack([
+        tf.stack([1., 0., -dx], axis=-1), 
+        tf.stack([0., 1., -dy], -1), 
+        tf.stack([0., 0., 1.], -1)], -1)
 
 
 def rotation_matrix(theta):
