@@ -1,2 +1,2 @@
 # deepgfx
-Using tensor flow to make pretty pictures
+Using tensorflow to make pretty pictures
