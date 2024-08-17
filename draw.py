@@ -14,19 +14,24 @@ def scale_matrix(sx, sy):
 
 
 def translation_matrix(dx, dy):
-    return tf.stack([
-        tf.stack([1., 0., -dx], axis=-1), 
-        tf.stack([0., 1., -dy], -1), 
-        tf.stack([0., 0., 1.], -1)], -1)
+    return tf.stack(
+        [
+            tf.stack([1.0, 0.0, -dx], -1),
+            tf.stack([0.0, 1.0, -dy], -1),
+            tf.stack([0.0, 0.0, 1.0], -1),
+        ],
+        -2,
+    )
 
 
 def rotation_matrix(theta):
     return tf.stack(
         [
-            [tf.cos(theta), tf.sin(theta), 0],
-            [-tf.sin(theta), tf.cos(theta), 0],
-            [0, 0, 1],
-        ]
+            tf.stack([tf.cos(theta), tf.sin(theta), 0.0], -1),
+            tf.stack([-tf.sin(theta), tf.cos(theta), 0.0], -1),
+            tf.stack([0.0, 0.0, 1.0], -1),
+        ],
+        -2,
     )
 
 
@@ -39,7 +44,7 @@ def triangle_bump(x):
 
 
 def cross_fade(n, x):
-    return tf.stack([triangle_bump(x - i) for i in range(n)])
+    return tf.stack([triangle_bump(x - i) for i in range(n)], -1)
 
 
 def line(norm, x):
@@ -93,7 +98,7 @@ def triangle(a, b, c):
         la = line_2p(a, b, x)
         lb = line_2p(b, c, x)
         lc = line_2p(c, a, x)
-        return tf.abs(tf.reduce_min(tf.stack([la, lb, lc]), axis=0))
+        return tf.reduce_min(tf.stack([la, lb, lc]), axis=0)
 
     return render
 
@@ -122,12 +127,23 @@ black = pure_color(tf.constant([0.0, 0, 0, 1]))
 
 
 def clip(drawing, mask_drawing):
+    return mask(drawing, map(lambda m: tf.where(m, 1.0, 0.0), mask_drawing))
+
+
+def map(fn, drawing):
+    def render(x):
+        return fn(drawing(x))
+
+    return render
+
+
+def mask(drawing, mask_drawing):
     def render(x):
         d = drawing(x)
         m = mask_drawing(x)
 
         # m = tf.stack([tf.ones(m.shape), tf.ones(m.shape), tf.ones(m.shape), ], axis=-1)
-        return d * tf.expand_dims(tf.where(m, 1.0, 0.0), -1)
+        return d * tf.expand_dims(m, -1)
 
     return render
 
@@ -157,13 +173,18 @@ def layers(l):
     return composite(h, layers(t))
 
 
-# X = transform(translation_matrix(0.1, 0.1), X)
-
-
 def threshold(drawing, limit):
     def render(x):
         d = drawing(x)
         return d < limit
+
+    return render
+
+
+def in_range(drawing, a, b):
+    def render(x):
+        d = drawing(x)
+        return (a <= d) & (d < b)
 
     return render
 

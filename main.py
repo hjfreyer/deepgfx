@@ -59,7 +59,7 @@ def worker(q):
             model = tf.saved_model.load("/tmp/tri.dgf")
         elif req == "render":
 
-            transform, tx, ty, a, b, movement, c1s, c1e, cp, cb = args
+            transform, tx, ty, a, b, movement, cb = args
 
             start = datetime.datetime.now()
             print("Make inputs")
@@ -79,22 +79,21 @@ def worker(q):
             T = tf.constant([0], tf.float32)
             T = T[tf.newaxis, tf.newaxis, :]
 
-
             render_func = model.render.concrete_functions[0]
             render_func.variables[0].assign(tf.constant(tx, tf.float32))
             render_func.variables[1].assign(tf.constant(ty, tf.float32))
             render_func.variables[2].assign(tf.constant(a, tf.float32)),
             render_func.variables[3].assign(tf.constant(b, tf.float32)),
             render_func.variables[4].assign(tf.constant(movement, tf.float32)),
-            render_func.variables[5].assign(tf.constant(c1s, tf.float32)),
-            render_func.variables[6].assign(tf.constant(c1e, tf.float32)),
-            render_func.variables[7].assign(tf.constant(cp, tf.float32)),
-
+            # render_func.variables[5].assign(tf.constant(c1s, tf.float32)),
+            # render_func.variables[6].assign(tf.constant(c1e, tf.float32)),
+            # render_func.variables[7].assign(tf.constant(cp, tf.float32)),
 
             print("Make call render")
             img = model.render(
                 X,
             )[:, :, 0, :]
+            img = tf.broadcast_to(img, (WIDTH, HEIGHT, 4))
             img = tf.transpose(tf.cast(255 * img, tf.uint8), (1, 0, 2))
             print("Done: ", datetime.datetime.now() - start)
             cb(img)
@@ -323,9 +322,9 @@ class Zoom_Advanced(tk.Frame):
                 self.a.get(),
                 self.b.get(),
                 self.movement.get(),
-                self.circle1start.get(),
-                self.circle1end.get(),
-                self.cp.get(),
+                # self.circle1start.get(),
+                # self.circle1end.get(),
+                # self.cp.get(),
                 cb,
             )
         )
